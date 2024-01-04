@@ -4,18 +4,11 @@
   "description": "",
   "main": "aggregate.js",
   "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "nodemon aggregate.js"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Garunyaa-S/JS-basics.git"
   },
   "author": "",
   "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/Garunyaa-S/JS-basics/issues"
-  },
-  "homepage": "https://github.com/Garunyaa-S/JS-basics#readme",
   "dependencies": {
     "express": "^4.18.2",
     "mongoose": "^8.0.3",
