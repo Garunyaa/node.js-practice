@@ -53,6 +53,39 @@ app.post('/create-class', async (req, res) => {
 	}
 });
 
+app.get('/populate', async (req) => {
+    try {
+        const userId = req.user.userId;
+        const user = await Student.findOne({ username: userId })
+            .populate('favorites')
+            .exec();
+    
+        if (!user) {
+            // Handle case where User document is not found
+            return {
+            success: false,
+            message: "User not found",
+            };
+        }
+    
+        const favorites = user.favorites;
+    
+        return {
+            success: true,
+            message: "User data retrieved successfully",
+            data: {
+            favorites
+            },
+        };
+    } catch (error) {
+        return {
+            success: false,
+            message: "Error retrieving user data",
+            error: error.message,
+        };
+    }
+});
+
 // Get students when condition matches
 app.get('/get-students-by-match', async (req, res) => {
 	try {

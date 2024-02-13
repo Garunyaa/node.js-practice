@@ -1,5 +1,6 @@
-import { createCustomers } from "../services/stripe-service";
-import { successResponse, errorResponse } from "../utils/response";
+import { successResponse, errorResponse } from "../utils/response.js";
+import Stripe from 'stripe';
+const stripe = new Stripe("sk_test_51OHMnlSD010bwSLtbxEWBTJYuThpDaWOA6vi3tf7nfBsu6fAVy7magTCmrrw1KNFXLD6k4cGuW6BGly0e8Y4mlfF00yNKUnfCv");
 export const createCustomer = async (req, res) => {
   try {
     const {
