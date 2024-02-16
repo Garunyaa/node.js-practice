@@ -1,4 +1,5 @@
 const { Schema, model } = require('mongoose');
+const ObjectId = Schema.ObjectId;
 
 const ApiLogSchema = new Schema({
     request_user_agent: String,
@@ -12,7 +13,7 @@ const ApiLogSchema = new Schema({
     remote_address: String,
     request_ip: String,
     process_time: String,
-    user_id: String,
+    user_id: { type: ObjectId, ref: 'User' },
     status: {
         type: Number,
         default: 1
