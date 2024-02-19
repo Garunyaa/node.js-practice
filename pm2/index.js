@@ -4,6 +4,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const winston = require('winston');
 const pm2 = require('pm2');
+const fs = require('fs');
 
 require('dotenv').config();
 
@@ -12,7 +13,6 @@ const ApiLog = require('./api-log-model.js');
 
 const app = express();
 const port = process.env.PORT || 5000;
-const pm2Port = process.env.PM2_PORT || 3000;
 
 const logger = winston.createLogger({
     level: 'info',
@@ -56,8 +56,12 @@ const apiLogger = (req, res, next) => {
         let user_id = null;
         if (authToken) {
             const token = authToken.split(' ')[1]; // Extract the token part (Bearer token)
-            const decodedToken = jwt.verify(token, process.env.SECRET_KEY);
-            user_id = decodedToken.id; // Assuming the user ID is stored in the JWT payload as 'id'
+            try {
+                const decodedToken = jwt.verify(token, process.env.SECRET_KEY);
+                user_id = decodedToken.id; // Assuming the user ID is stored in the JWT payload as 'id'
+            } catch (error) {
+                logger.error("Error verifying JWT token", { error: error.message });
+            }
         }
 
         const logData = {
@@ -80,7 +84,11 @@ const apiLogger = (req, res, next) => {
         logger.info('API Log:', logData);
 
         // Store logs in the database
-        await ApiLog.create(logData);
+        try {
+            await ApiLog.create(logData);
+        } catch (error) {
+            logger.error("Error storing log in the database", { error: error.message });
+        }
     });
 
     next();
@@ -103,24 +111,14 @@ const startPM2 = () => {
                     process.exit(1);
                 }
 
-                const options = {
-                    name: 'user-list',
+                pm2.start({
                     script: 'index.js',
-                    output: './logs/user-list.log',
-                    error: './logs/user-list-error.log',
-                    env: {
-                        PORT: pm2Port // Specify the port for PM2 process
-                    }
-                };
-
-                pm2.start(options, (err) => {
+                    name: 'my-api'
+                }, function (err, apps) {
                     if (err) {
-                        logger.error("Failed to start PM2 process", { error: err.message });
-                        process.exit(1);
+                        console.error(err);
+                        return pm2.disconnect();
                     }
-
-                    logger.info('Application started successfully with PM2.');
-                    pm2.disconnect();
                 });
             });
         } else {
@@ -234,7 +232,7 @@ const buyProduct = async (req, res) => {
             res.status(200).json({ message: 'Bought product successfully' });
         }
     } catch (error) {
-        console.error(error);
+        logger.error(error);
         res.status(500).json({ message: 'Internal Server Error' }, { error: error.message });
     }
 };
@@ -246,7 +244,7 @@ const sellProduct = async (req, res) => {
             res.status(200).json({ message: 'Sold product successfully' });
         }
     } catch (error) {
-        console.error(error);
+        logger.error(error);
         res.status(500).json({ message: 'Internal Server Error' }, { error: error.message });
     }
 };
@@ -258,7 +256,7 @@ const createProduct = async (req, res) => {
             res.status(200).json({ message: 'Product created successfully' });
         }
     } catch (error) {
-        console.error(error);
+        logger.error(error);
         res.status(500).json({ message: 'Internal Server Error' }, { error: error.message });
     }
 };
@@ -305,7 +303,102 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
-// Middleware to log errors
+const successLogs = async (req, res) => {
+    pm2.connect(function (err) {
+        if (err) {
+            console.error(err);
+            process.exit(2);
+        }
+
+        pm2.list((err, list) => {
+            console.log(err, list);
+
+            list.forEach((process) => {
+                if (process.name == req.params.name) {
+
+                    fs.readFile(process.pm2_env.pm_out_log_path, function read(err, data) {
+                        if (err) {
+                            throw err;
+                        }
+
+                        const lines = data.toString().split('\n'); // Split the content into an array of lines
+
+                        lines.forEach((line) => {
+                            // Send each line as a separate response
+                            res.write(line + '\n');
+                        });
+
+                        // End the response after sending all lines
+                        res.end();
+                    })
+                }
+            })
+        })
+    })
+};
+
+const errorLogs = async (req, res) => {
+    pm2.connect(function (err) {
+        if (err) {
+            console.error(err);
+            process.exit(2);
+        }
+
+        pm2.list((err, list) => {
+            console.log(err, list);
+
+            list.forEach((process) => {
+                if (process.name == req.params.name) {
+
+                    fs.readFile(process.pm2_env.pm_err_log_path, function read(err, data) {
+                        if (err) {
+                            throw err;
+                        }
+
+                        const lines = data.toString().split('\n');
+
+                        lines.forEach((line) => {
+                            res.write(line + '\n');
+                        });
+
+                        res.end();
+                    })
+                }
+            })
+        })
+    })
+};
+
+const list = async (req, res) => {
+    pm2.connect(function (err) {
+        if (err) {
+            console.error(err);
+            process.exit(2);
+        }
+
+        pm2.list((err, list) => {
+            console.log(list, "list");
+            if (err) {
+                console.log(err);
+            }
+            list.forEach(obj => {
+                res.write(JSON.stringify(obj) + '\n');
+            });
+
+            res.end();
+        });
+    });
+};
+
+const restart = async (req, res) => {
+    pm2.restart(req.params.name, (err, process) => {
+        console.log("err:", err);
+        console.log("process:", process);
+        return res.status(200).json({ message: `${req.params.name} restarted successfully` });
+    })
+};
+
+// Global error handler middleware
 app.use((err, req, res, next) => {
     logger.error('Internal server error:', { error: err.stack });
     res.status(500).json({ error: 'Internal Server Error' });
@@ -318,8 +411,13 @@ app.post('/api/user/buy/:id', authenticateToken, apiLogger, buyProduct);
 app.post('/api/user/sell/:id', authenticateToken, apiLogger, sellProduct);
 app.post('/api/user/create/:id', authenticateToken, apiLogger, createProduct);
 app.get('/api/logs/:id', apiLogger, getLogs);
+app.get('/out-log/:name', successLogs);
+app.get('/err-log/:name', errorLogs);
+app.get('/restart/:name', restart);
+app.get('/list', list);
 
 app.listen(port, () => {
-    logger.info(`Server running on port ${port}`);
+    // logger.info(`Server running on port ${port}`);
+    console.log(`Server running on port ${port}`);
     startPM2(); // Start PM2 only when the server is successfully listening on the port
 });
